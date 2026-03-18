@@ -16,6 +16,7 @@ pub enum Error {
     Exit,
     Quit,
     Abort,
+    FfiError(String),
 }
 
 impl Display for Error {
@@ -32,6 +33,7 @@ impl Display for Error {
             MissingArgument => "argument is missing".into(),
             CustomError(msg) => msg.into(),
             ParsingError(msg) => msg.into(),
+            FfiError(msg) => msg.into(),
             Abort => "abort".into(),
             Exit | Quit | Leave => unreachable!(),
         };

@@ -1,6 +1,6 @@
-pub type Int = i32;
-pub const TRUE: i32 = -1;
-pub const FALSE: i32 = 0;
+pub type Int = i64;
+pub const TRUE: i64 = -1;
+pub const FALSE: i64 = 0;
 
 /// Is the value true-ish.
 #[inline]
@@ -29,14 +29,8 @@ pub fn to_char(value: Int) -> char {
     '�'
 }
 
-/// Transform i64 to i32 rounding the i64 values to the limits of i32.
+/// Transform i128 to i64 clamping to the limits of i64.
 #[inline]
-pub fn saturating_i64_to_i32(value: i64) -> i32 {
-    if value < i32::MIN as i64 {
-        i32::MIN
-    } else if value > i32::MAX as i64 {
-        i32::MAX
-    } else {
-        value as i32
-    }
+pub fn saturating_i128_to_i64(value: i128) -> i64 {
+    value.clamp(i64::MIN as i128, i64::MAX as i128) as i64
 }

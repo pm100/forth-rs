@@ -1,4 +1,6 @@
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, str::FromStr, sync::Arc};
+
+use dyncall::FuncDef;
 
 use crate::{
     errors::Error::{self, CompileTimeWord, Exit, InvalidName, Leave, UnknownWord},
@@ -13,6 +15,22 @@ macro_rules! maybe_break_loop {
             result => result?,
         }
     };
+}
+
+/// Wrapper around a compiled FFI function definition, satisfying Clone + PartialEq + Debug.
+#[derive(Clone)]
+pub struct FfiCallable(pub Arc<FuncDef>);
+
+impl PartialEq for FfiCallable {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+
+impl std::fmt::Debug for FfiCallable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<ffi>")
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -53,6 +71,10 @@ pub enum Expr {
     See(String),
     /// Placeholder for a reserved word.
     Dummy,
+    /// A compiled foreign function call.
+    FfiCall(FfiCallable),
+    /// Store a C string in the strings pool and push its index.
+    ZString(String),
 }
 
 impl Expr {
@@ -156,6 +178,16 @@ impl Expr {
                 Ok(())
             }
             Dummy => Err(CompileTimeWord),
+            FfiCall(callable) => crate::ffi::dispatch(&callable.0, forth),
+            ZString(s) => {
+                let idx = forth.strings.len();
+                forth.strings.push(
+                    std::ffi::CString::new(s.clone())
+                        .map_err(|e| Error::FfiError(e.to_string()))?,
+                );
+                forth.stack_push(idx as Int);
+                Ok(())
+            }
         }
     }
 }
@@ -210,6 +242,8 @@ impl Display for Expr {
             See(word) => format!("see {}", word),
             ToValue(name) => format!("to {}", name),
             Dummy => unreachable!(),
+            FfiCall(_) => "<ffi>".into(),
+            ZString(s) => format!("zstring\" {}\"", s),
         };
         write!(f, "{}", string)
     }

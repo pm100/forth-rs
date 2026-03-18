@@ -4,7 +4,7 @@ use crate::{
     },
     expressions::Expr::{self, Callable, Dummy, Value},
     forth::Forth,
-    numbers::{from_bool, is_true, saturating_i64_to_i32, to_char, Int, FALSE, TRUE},
+    numbers::{from_bool, is_true, saturating_i128_to_i64, to_char, Int, FALSE, TRUE},
 };
 use std::cmp::Ordering;
 
@@ -176,8 +176,8 @@ fn mul_div(forth: &mut Forth) -> Result<(), Error> {
         return Err(DivisionByZero);
     }
     let (a, b) = forth.stack_pop2()?;
-    let (a, b, c) = (a as i64, b as i64, c as i64);
-    forth.stack_push(saturating_i64_to_i32(a * b / c));
+    let (a, b, c) = (a as i128, b as i128, c as i128);
+    forth.stack_push(saturating_i128_to_i64(a * b / c));
     Ok(())
 }
 
@@ -189,9 +189,9 @@ fn mul_div_rem(forth: &mut Forth) -> Result<(), Error> {
         return Err(DivisionByZero);
     }
     let (a, b) = forth.stack_pop2()?;
-    let (a, b, c) = (a as i64, b as i64, c as i64);
-    forth.stack_push(saturating_i64_to_i32(a * b % c));
-    forth.stack_push(saturating_i64_to_i32(a * b / c));
+    let (a, b, c) = (a as i128, b as i128, c as i128);
+    forth.stack_push(saturating_i128_to_i64(a * b % c));
+    forth.stack_push(saturating_i128_to_i64(a * b / c));
     Ok(())
 }
 

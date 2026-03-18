@@ -4,7 +4,7 @@ use crate::{
     numbers::Int,
     parser::Parser,
 };
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, ffi::CString, fs};
 
 /// The Forth interpreter that walks over the code and executes it.
 pub struct Forth {
@@ -16,6 +16,8 @@ pub struct Forth {
     pub(crate) dictionary: HashMap<String, Expr>,
     /// Memory for storing data related to named variables.
     pub(crate) memory: Vec<Int>,
+    /// String pool for storing C strings used in FFI calls.
+    pub(crate) strings: Vec<CString>,
 }
 
 impl Forth {
@@ -26,6 +28,7 @@ impl Forth {
             return_stack: Vec::new(),
             dictionary: HashMap::new(),
             memory: Vec::new(),
+            strings: Vec::new(),
         }
     }
 

@@ -90,7 +90,7 @@ fn standard_tests() {
 #[test_case("begin 1 + dup 10 > if leave then again", &[0], &[11]; "begin again")]
 #[test_case("do i loop", &[5, 0], &[0, 1, 2, 3, 4]; "do loop")]
 #[test_case("3 0 do 2 0 do j i loop loop", &[], &[0, 0, 0, 1, 1, 0, 1, 1, 2, 0, 2, 1]; "nested do loop")]
-fn eval_string(word: &str, init_stack: &[i32], expected_stack: &[i32]) {
+fn eval_string(word: &str, init_stack: &[Int], expected_stack: &[Int]) {
     let expected_stack = expected_stack.to_vec();
     let init_stack = init_stack.to_vec();
 
@@ -402,4 +402,36 @@ fn parsing_errors(input: &str) {
     let parser = Parser::from(input);
     let result: Result<Vec<Expr>, Error> = parser.collect();
     assert!(result.is_err());
+}
+
+#[cfg(test)]
+mod ffi_tests {
+    use super::*;
+
+    #[cfg(target_os = "windows")]
+    const LIBC: &str = "msvcrt.dll";
+    #[cfg(target_os = "macos")]
+    const LIBC: &str = "libSystem.B.dylib";
+    #[cfg(target_os = "linux")]
+    const LIBC: &str = "libc.so.6";
+
+    #[test]
+    fn test_ffi_abs() {
+        let mut forth = Forth::new(64);
+        forth
+            .eval_string(&format!(r#"extern: myabs "{LIBC}|abs|i32|i32|""#))
+            .unwrap();
+        forth.eval_string("-42 myabs").unwrap();
+        assert_eq!(forth.data_stack, vec![42]);
+    }
+
+    #[test]
+    fn test_ffi_strlen() {
+        let mut forth = Forth::new(64);
+        forth
+            .eval_string(&format!(r#"extern: mystrlen "{LIBC}|strlen|cstr|u64|""#))
+            .unwrap();
+        forth.eval_string(r#"zstring" hello" mystrlen"#).unwrap();
+        assert_eq!(forth.data_stack, vec![5]);
+    }
 }

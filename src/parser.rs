@@ -1,5 +1,5 @@
 use crate::{
-    errors::Error::{self, MissingArgument, ParsingError},
+    errors::Error::{self, FfiError, MissingArgument, ParsingError},
     expressions::Expr::{self, *},
     numbers::Int,
     reader::Reader,
@@ -213,6 +213,39 @@ impl<'a> Iterator for Parser<'a> {
                 Ok(string) => Some(Ok(Print(string))),
                 Err(msg) => Some(Err(msg)),
             },
+            "zstring\"" => match self.read_until('"') {
+                Ok(s) => Some(Ok(ZString(s))),
+                Err(e) => Some(Err(e)),
+            },
+            "extern:" => {
+                self.skip_whitespaces();
+                let name = self.read_word();
+                if name.is_empty() {
+                    return Some(Err(ParsingError("extern: needs a name".into())));
+                }
+                self.skip_whitespaces();
+                match self.0.next() {
+                    Some('"') => {}
+                    _ => {
+                        return Some(Err(ParsingError(
+                            "extern: needs a quoted descriptor".into(),
+                        )))
+                    }
+                }
+                let descriptor = match self.read_until('"') {
+                    Ok(s) => s,
+                    Err(e) => return Some(Err(e)),
+                };
+                match dyncall::DynCaller::define_function_by_str(&descriptor) {
+                    Ok(func_def) => {
+                        use crate::expressions::FfiCallable;
+                        use std::sync::Arc;
+                        let callable = FfiCallable(Arc::new(func_def));
+                        Some(Ok(NewFunction(name, vec![FfiCall(callable)])))
+                    }
+                    Err(e) => Some(Err(FfiError(e.to_string()))),
+                }
+            }
             // special forms
             ":" => Some(self.read_function()),
             "if" => Some(self.read_iet()),
