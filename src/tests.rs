@@ -434,4 +434,14 @@ mod ffi_tests {
         forth.eval_string(r#"zstring" hello" mystrlen"#).unwrap();
         assert_eq!(forth.data_stack, vec![5]);
     }
+
+    #[test]
+    fn test_ffi_atoi() {
+        let mut forth = Forth::new(64);
+        forth
+            .eval_string(&format!(r#"extern: atoi "{LIBC}|atoi|cstr|i32|""#))
+            .unwrap();
+        forth.eval_string(r#"zstring" 42" atoi"#).unwrap();
+        assert_eq!(forth.data_stack, vec![42]);
+    }
 }

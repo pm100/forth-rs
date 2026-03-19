@@ -24,15 +24,15 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
 
     for (i, &val) in raw.iter().enumerate() {
         match func_def.get_arg_type(i) {
-            ArgType::Char => inv.push_arg(&(val as u8)),
-            ArgType::I16 => inv.push_arg(&(val as i16)),
-            ArgType::U16 => inv.push_arg(&(val as u16)),
-            ArgType::I32 => inv.push_arg(&(val as i32)),
-            ArgType::U32 => inv.push_arg(&(val as u32)),
-            ArgType::I64 => inv.push_arg(&(val as i64)),
-            ArgType::U64 => inv.push_arg(&(val as u64)),
-            ArgType::F32 => inv.push_arg(&f32::from_bits(val as u32)),
-            ArgType::F64 => inv.push_arg(&f64::from_bits(val as u64)),
+            ArgType::Char => inv.push_arg(&(val as u8)).map_err(|e| Error::FfiError(e.to_string()))?,
+            ArgType::I16 => inv.push_arg(&(val as i16)).map_err(|e| Error::FfiError(e.to_string()))?,
+            ArgType::U16 => inv.push_arg(&(val as u16)).map_err(|e| Error::FfiError(e.to_string()))?,
+            ArgType::I32 => inv.push_arg(&(val as i32)).map_err(|e| Error::FfiError(e.to_string()))?,
+            ArgType::U32 => inv.push_arg(&(val as u32)).map_err(|e| Error::FfiError(e.to_string()))?,
+            ArgType::I64 => inv.push_arg(&(val as i64)).map_err(|e| Error::FfiError(e.to_string()))?,
+            ArgType::U64 => inv.push_arg(&(val as u64)).map_err(|e| Error::FfiError(e.to_string()))?,
+            ArgType::F32 => inv.push_arg(&f32::from_bits(val as u32)).map_err(|e| Error::FfiError(e.to_string()))?,
+            ArgType::F64 => inv.push_arg(&f64::from_bits(val as u64)).map_err(|e| Error::FfiError(e.to_string()))?,
             ArgType::CString => {
                 // val is an index into forth.strings
                 let idx = val as usize;
@@ -41,11 +41,11 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
                 }
                 owned_cstrings.push(forth.strings[idx].clone());
                 let cstr = owned_cstrings.last().unwrap();
-                inv.push_arg(cstr.as_c_str());
+                inv.push_arg(cstr.as_c_str()).map_err(|e| Error::FfiError(e.to_string()))?;
             }
             ArgType::OpaquePointer => {
                 let ptr = val as usize as *mut std::ffi::c_void;
-                inv.push_arg(&dyncall::ArgVal::Pointer(ptr));
+                inv.push_arg(&dyncall::ArgVal::Pointer(ptr)).map_err(|e| Error::FfiError(e.to_string()))?;
             }
             other => {
                 return Err(Error::FfiError(format!(
