@@ -236,7 +236,7 @@ impl<'a> Iterator for Parser<'a> {
                     Ok(s) => s,
                     Err(e) => return Some(Err(e)),
                 };
-                match dyncall::DynCaller::define_function_by_str(&descriptor) {
+                match dyncall::DynCaller::define_function(&descriptor) {
                     Ok(func_def) => {
                         use crate::expressions::FfiCallable;
                         use std::sync::Arc;

@@ -56,7 +56,7 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
         }
     }
 
-    let result = inv.call();
+    let result = inv.call().map_err(|e| Error::FfiError(e.to_string()))?;
 
     match func_def.get_return_type() {
         ArgType::Void => {}
