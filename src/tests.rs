@@ -444,4 +444,29 @@ mod ffi_tests {
         forth.eval_string(r#"zstring" 42" atoi"#).unwrap();
         assert_eq!(forth.data_stack, vec![42]);
     }
+
+    #[test]
+    fn test_ffi_strcmp() {
+        let mut forth = Forth::new(64);
+        forth
+            .eval_string(&format!(r#"extern: strcmp "{LIBC}|strcmp|cstr,cstr|i32|""#))
+            .unwrap();
+        // equal strings -> 0
+        forth.eval_string(r#"zstring" hello" zstring" hello" strcmp"#).unwrap();
+        assert_eq!(forth.data_stack, vec![0]);
+        forth.data_stack.clear();
+        // apple < banana -> negative
+        forth.eval_string(r#"zstring" apple" zstring" banana" strcmp"#).unwrap();
+        assert!(forth.data_stack[0] < 0);
+    }
+
+    #[test]
+    fn test_ffi_abs_positive() {
+        let mut forth = Forth::new(64);
+        forth
+            .eval_string(&format!(r#"extern: myabs "{LIBC}|abs|i32|i32|""#))
+            .unwrap();
+        forth.eval_string("42 myabs").unwrap();
+        assert_eq!(forth.data_stack, vec![42]);
+    }
 }
