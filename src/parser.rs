@@ -239,8 +239,8 @@ impl<'a> Iterator for Parser<'a> {
                 match dyncall::DynCaller::define_function(&descriptor) {
                     Ok(func_def) => {
                         use crate::expressions::FfiCallable;
-                        use std::sync::Arc;
-                        let callable = FfiCallable(Arc::new(func_def));
+                        use std::rc::Rc;
+                        let callable = FfiCallable(Rc::new(func_def));
                         Some(Ok(NewFunction(name, vec![FfiCall(callable)])))
                     }
                     Err(e) => Some(Err(FfiError(e.to_string()))),

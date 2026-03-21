@@ -1,4 +1,4 @@
-use std::{fmt::Display, str::FromStr, sync::Arc};
+use std::{fmt::Display, rc::Rc, str::FromStr};
 
 use dyncall::FuncDef;
 
@@ -19,7 +19,7 @@ macro_rules! maybe_break_loop {
 
 /// Wrapper around a compiled FFI function definition, satisfying Clone + PartialEq + Debug.
 #[derive(Clone)]
-pub struct FfiCallable(pub Arc<FuncDef>);
+pub struct FfiCallable(pub Rc<FuncDef>);
 
 impl PartialEq for FfiCallable {
     fn eq(&self, _: &Self) -> bool {
@@ -34,6 +34,7 @@ impl std::fmt::Debug for FfiCallable {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+#[allow(unpredictable_function_pointer_comparisons)]
 pub enum Expr {
     /// Execute the function related to this word.
     Word(String),

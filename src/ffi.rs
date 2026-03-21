@@ -29,7 +29,7 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
             ArgType::U16 => inv.push_arg(&(val as u16)).map_err(|e| Error::FfiError(e.to_string()))?,
             ArgType::I32 => inv.push_arg(&(val as i32)).map_err(|e| Error::FfiError(e.to_string()))?,
             ArgType::U32 => inv.push_arg(&(val as u32)).map_err(|e| Error::FfiError(e.to_string()))?,
-            ArgType::I64 => inv.push_arg(&(val as i64)).map_err(|e| Error::FfiError(e.to_string()))?,
+            ArgType::I64 => inv.push_arg(&val).map_err(|e| Error::FfiError(e.to_string()))?,
             ArgType::U64 => inv.push_arg(&(val as u64)).map_err(|e| Error::FfiError(e.to_string()))?,
             ArgType::F32 => inv.push_arg(&f32::from_bits(val as u32)).map_err(|e| Error::FfiError(e.to_string()))?,
             ArgType::F64 => inv.push_arg(&f64::from_bits(val as u64)).map_err(|e| Error::FfiError(e.to_string()))?,
