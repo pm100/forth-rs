@@ -5,20 +5,15 @@ use crate::forth::Forth;
 use crate::numbers::Int;
 
 fn is_struct_arg(arg_type: &ArgType) -> bool {
-    matches!(arg_type, ArgType::Struct(_))
-        || matches!(arg_type, ArgType::Pointer(inner) if matches!(inner.as_ref(), ArgType::Struct(_)))
+    arg_type.struct_type().is_some()
 }
 
 /// Number of data-stack slots an argument occupies.
 /// Struct args occupy one slot per field; all others occupy 1.
 fn slot_count(arg_type: &ArgType) -> usize {
-    if is_struct_arg(arg_type) {
-        StructValue::new(arg_type)
-            .map(|sv| sv.field_count())
-            .unwrap_or(0)
-    } else {
-        1
-    }
+    arg_type.struct_type()
+        .map(|st| st.field_count())
+        .unwrap_or(1)
 }
 
 /// Dispatch a foreign function call.
