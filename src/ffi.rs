@@ -147,6 +147,14 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
         ArgType::OpaquePointer => {
             forth.stack_push(*result.as_pointer().unwrap() as usize as Int);
         }
+        ArgType::CString => {
+            if let ArgVal::RustString(s) = result {
+                let string = unsafe { (*s).clone() };
+                let idx = forth.strings.len();
+                forth.strings.push(CString::new(string).unwrap_or_default());
+                forth.stack_push(idx as Int);
+            }
+        }
         other => {
             return Err(Error::FfiError(format!(
                 "unsupported return type {:?}",
