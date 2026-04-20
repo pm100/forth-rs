@@ -1,5 +1,5 @@
 use std::ffi::CString;
-use dyncall::{ArgType, ArgVal, FuncDef, ScriptVal, StructValue};
+use dyncall::{ArgType, FuncDef, ScriptVal, StructValue};
 use crate::errors::Error;
 use crate::forth::Forth;
 use crate::numbers::Int;
@@ -83,13 +83,13 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
 
         let val = raw[offset];
         match arg_type {
-            ArgType::Char => inv.push_arg(&(val as u8)).map_err(|e| Error::FfiError(e.to_string()))?,
-            ArgType::I16 => inv.push_arg(&(val as i16)).map_err(|e| Error::FfiError(e.to_string()))?,
-            ArgType::U16 => inv.push_arg(&(val as u16)).map_err(|e| Error::FfiError(e.to_string()))?,
-            ArgType::I32 => inv.push_arg(&(val as i32)).map_err(|e| Error::FfiError(e.to_string()))?,
-            ArgType::U32 => inv.push_arg(&(val as u32)).map_err(|e| Error::FfiError(e.to_string()))?,
-            ArgType::I64 => inv.push_arg(&val).map_err(|e| Error::FfiError(e.to_string()))?,
-            ArgType::U64 => inv.push_arg(&(val as u64)).map_err(|e| Error::FfiError(e.to_string()))?,
+            ArgType::Char
+            | ArgType::I16
+            | ArgType::U16
+            | ArgType::I32
+            | ArgType::U32
+            | ArgType::I64
+            | ArgType::U64 => inv.push_script_val(ScriptVal::Integer(val)).map_err(|e| Error::FfiError(e.to_string()))?,
             ArgType::F32 => inv.push_arg(&f32::from_bits(val as u32)).map_err(|e| Error::FfiError(e.to_string()))?,
             ArgType::F64 => inv.push_arg(&f64::from_bits(val as u64)).map_err(|e| Error::FfiError(e.to_string()))?,
             ArgType::CString => {
@@ -103,8 +103,7 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
                 inv.push_arg(cstr.as_c_str()).map_err(|e| Error::FfiError(e.to_string()))?;
             }
             ArgType::OpaquePointer => {
-                let ptr = val as usize as *mut std::ffi::c_void;
-                inv.push_arg(&ArgVal::Pointer(ptr)).map_err(|e| Error::FfiError(e.to_string()))?;
+                inv.push_script_val(ScriptVal::Integer(val)).map_err(|e| Error::FfiError(e.to_string()))?;
             }
             other => {
                 return Err(Error::FfiError(format!(
@@ -116,50 +115,22 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
         offset += 1;
     }
 
-    let result = inv.call().map_err(|e| Error::FfiError(e.to_string()))?;
-
-    // Struct returns: push one value per field (first field deepest).
-    if let ArgVal::StructValue(sv) = &result {
-        for fi in 0..sv.field_count() {
-            match sv.script_read(fi).map_err(|e| Error::FfiError(e.to_string()))? {
-                ScriptVal::Number(n) => forth.stack_push(n as Int),
-                ScriptVal::Str(s) => {
-                    let idx = forth.strings.len();
-                    forth.strings.push(CString::new(s).unwrap_or_default());
-                    forth.stack_push(idx as Int);
-                }
+    let script_result = inv.call_scripted().map_err(|e| Error::FfiError(e.to_string()))?;
+    match script_result.return_val {
+        ScriptVal::Nil => {}
+        ScriptVal::Integer(n) => forth.stack_push(n as Int),
+        ScriptVal::Number(f) => {
+            // Forth stores floats as bit patterns on the stack.
+            match func_def.get_return_type() {
+                ArgType::F32 => forth.stack_push((f as f32).to_bits() as Int),
+                _ => forth.stack_push(f64::to_bits(f) as Int),
             }
         }
-        return Ok(());
-    }
-
-    match func_def.get_return_type() {
-        ArgType::Void => {}
-        ArgType::Char => forth.stack_push(*result.as_char().unwrap() as Int),
-        ArgType::I16 => forth.stack_push(*result.as_i16().unwrap() as Int),
-        ArgType::U16 => forth.stack_push(*result.as_u16().unwrap() as Int),
-        ArgType::I32 => forth.stack_push(*result.as_i32().unwrap() as Int),
-        ArgType::U32 => forth.stack_push(*result.as_u32().unwrap() as Int),
-        ArgType::I64 => forth.stack_push(*result.as_i64().unwrap() as Int),
-        ArgType::U64 => forth.stack_push(*result.as_u64().unwrap() as Int),
-        ArgType::F32 => forth.stack_push(result.as_f32().unwrap().to_bits() as Int),
-        ArgType::F64 => forth.stack_push(f64::to_bits(*result.as_f64().unwrap()) as Int),
-        ArgType::OpaquePointer => {
-            forth.stack_push(*result.as_pointer().unwrap() as usize as Int);
-        }
-        ArgType::CString => {
-            if let ArgVal::RustString(s) = result {
-                let string = unsafe { (*s).clone() };
-                let idx = forth.strings.len();
-                forth.strings.push(CString::new(string).unwrap_or_default());
-                forth.stack_push(idx as Int);
-            }
-        }
-        other => {
-            return Err(Error::FfiError(format!(
-                "unsupported return type {:?}",
-                other
-            )));
+        ScriptVal::Pointer(p) => forth.stack_push(p as usize as Int),
+        ScriptVal::Str(s) => {
+            let idx = forth.strings.len();
+            forth.strings.push(CString::new(s).unwrap_or_default());
+            forth.stack_push(idx as Int);
         }
     }
 
