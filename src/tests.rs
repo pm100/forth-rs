@@ -13,7 +13,11 @@ fn standard_tests() {
     // See: https://forth-standard.org/standard/testsuite
     let mut forth = Forth::new(10);
     assert!(forth.eval_file("include/std.f").is_ok());
-    assert!(forth.eval_file("include/testsuite.f").is_ok());
+    // testsuite.f ends with `BYE`, which would exit the whole test process
+    // (silently skipping every later test), so strip it.
+    let suite = std::fs::read_to_string("include/testsuite.f").unwrap();
+    let suite = suite.trim_end().trim_end_matches("BYE").trim_end_matches("bye");
+    assert!(forth.eval_string(suite).is_ok());
 }
 
 #[test_case("0", &[], &[0]; "zero")]
@@ -468,5 +472,121 @@ mod ffi_tests {
             .unwrap();
         forth.eval_string("42 myabs").unwrap();
         assert_eq!(forth.data_stack, vec![42]);
+    }
+
+    // ── struct / pointer-to-struct / struct-return ────────────────────────
+
+    fn struct_fixture() -> &'static str {
+        use std::sync::OnceLock;
+        static PATH: OnceLock<String> = OnceLock::new();
+        PATH.get_or_init(|| {
+            let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let source = manifest.join("..").join("..").join("dyncall").join("tools").join("struct_fixture.rs");
+            let out_dir = manifest.join("target").join("struct-fixture");
+            std::fs::create_dir_all(&out_dir).unwrap();
+            let name = if cfg!(windows) {
+                "struct_fixture.dll"
+            } else if cfg!(target_os = "macos") {
+                "libstruct_fixture.dylib"
+            } else {
+                "libstruct_fixture.so"
+            };
+            let out = out_dir.join(name);
+            let status = std::process::Command::new("rustc")
+                .args(["--crate-type", "cdylib", "--edition", "2021"])
+                .arg(&source)
+                .arg("-o")
+                .arg(&out)
+                .status()
+                .unwrap();
+            assert!(status.success(), "failed to build struct fixture");
+            out.canonicalize().unwrap().to_string_lossy().trim_start_matches(r"\?\").to_string()
+        })
+    }
+
+    fn forth_with(decl: &str) -> Forth {
+        let mut forth = Forth::new(64);
+        forth.eval_string(decl).unwrap();
+        forth
+    }
+
+    #[test]
+    fn test_ffi_struct_by_value() {
+        let lib = struct_fixture();
+        let mut forth = forth_with(&format!(r#"extern: sumpair "{lib}|sum_pair|{{u32,u32}}|u32|""#));
+        forth.eval_string("10 32 sumpair").unwrap();
+        assert_eq!(forth.data_stack, vec![42]);
+    }
+
+    #[test]
+    fn test_ffi_struct_pointer_input() {
+        let lib = struct_fixture();
+        let mut forth = forth_with(&format!(r#"extern: sumptr "{lib}|sum_pair_ptr|*{{u32,u32}}|u32|""#));
+        forth.eval_string("11 31 sumptr").unwrap();
+        // mutated fields are written back (unchanged here), then the return value
+        assert_eq!(forth.data_stack, vec![11, 31, 42]);
+    }
+
+    #[test]
+    fn test_ffi_struct_pointer_writeback() {
+        let lib = struct_fixture();
+        let mut forth = forth_with(&format!(r#"extern: bump "{lib}|bump_pair|*{{u32,u32}}|u32|""#));
+        forth.eval_string("10 20 bump").unwrap();
+        // fields bumped by +1 and +2, then the sum
+        assert_eq!(forth.data_stack, vec![11, 22, 33]);
+    }
+
+    #[test]
+    fn test_ffi_struct_pointer_return() {
+        let mut forth = forth_with(&format!(r#"extern: lconv "{LIBC}|localeconv||*{{cstr,cstr}}|""#));
+        forth.eval_string("lconv").unwrap();
+        assert_eq!(forth.data_stack.len(), 2, "expected one value per struct field");
+        let decimal_point = &forth.strings[forth.data_stack[0] as usize];
+        assert_eq!(decimal_point.to_str().unwrap(), ".");
+    }
+
+    #[test]
+    fn test_ffi_struct_arg_stack_underflow() {
+        let lib = struct_fixture();
+        let mut forth = forth_with(&format!(r#"extern: sumpair "{lib}|sum_pair|{{u32,u32}}|u32|""#));
+        // needs two values, only one on the stack
+        assert!(forth.eval_string("10 sumpair").is_err());
+    }
+
+    // ── error paths ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_ffi_invalid_string_index_is_error() {
+        let mut forth = forth_with(&format!(r#"extern: mystrlen "{LIBC}|strlen|cstr|u64|""#));
+        assert!(forth.eval_string("9999 mystrlen").is_err());
+    }
+
+    #[test]
+    fn test_ffi_unsupported_output_pointer_is_error() {
+        let mut forth = forth_with(&format!(r#"extern: sscan "{LIBC}|sscanf|cstr,cstr,*i32|i32|""#));
+        assert!(forth.eval_string(r#"zstring" 7" zstring" %d" 0 sscan"#).is_err());
+    }
+
+    #[test]
+    fn test_ffi_bad_library_is_error() {
+        let mut forth = Forth::new(64);
+        assert!(forth
+            .eval_string(r#"extern: nope "dyncall_no_such_lib_xyz|f||void|""#)
+            .is_err());
+    }
+
+    #[test]
+    fn test_ffi_void_return_pushes_nothing() {
+        let mut forth = forth_with(&format!(r#"extern: seed "{LIBC}|srand|u32|void|""#));
+        forth.eval_string("42 seed").unwrap();
+        assert!(forth.data_stack.is_empty());
+    }
+
+    #[test]
+    fn test_ffi_float_roundtrip() {
+        let mut forth = forth_with(&format!(r#"extern: fabs "{LIBC}|fabs|f64|f64|""#));
+        forth.stack_push(f64::to_bits(-2.5) as Int);
+        forth.eval_string("fabs").unwrap();
+        assert_eq!(f64::from_bits(forth.data_stack[0] as u64), 2.5);
     }
 }

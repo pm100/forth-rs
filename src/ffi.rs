@@ -63,7 +63,10 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
         offset += n;
     }
 
-    // Push args in order.
+    // Push args in order. Track which struct args are pointer (`*{...}`) args,
+    // since those get mutated in place and their fields are written back to
+    // the data stack after the call.
+    let mut writeback: Vec<bool> = (0..arg_count).map(|_| false).collect();
     let mut offset = 0usize;
     for i in 0..arg_count {
         let n = slot_counts[i];
@@ -72,6 +75,7 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
         if is_struct_arg(arg_type) {
             let sv = struct_values[i].as_mut().unwrap();
             let is_ptr = matches!(arg_type, ArgType::Pointer(_));
+            writeback[i] = is_ptr;
             if is_ptr {
                 inv.push_mut_arg(sv).map_err(|e| Error::FfiError(e.to_string()))?;
             } else {
@@ -116,6 +120,49 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
     }
 
     let script_result = inv.call_scripted().map_err(|e| Error::FfiError(e.to_string()))?;
+
+    // Write mutated `*{...}` struct fields back to the data stack, in the same
+    // slots (and field order) they were originally popped from, so the caller
+    // can read them the way it would any other multi-value return.
+    for i in 0..arg_count {
+        if !writeback[i] {
+            continue;
+        }
+        let sv = struct_values[i].as_ref().unwrap();
+        for fi in 0..sv.field_count() {
+            let val = match sv.script_read(fi) {
+                Ok(ScriptVal::Integer(n)) => n as Int,
+                Ok(ScriptVal::Number(f)) => f as Int,
+                Ok(ScriptVal::Pointer(p)) => p as usize as Int,
+                _ => 0,
+            };
+            forth.stack_push(val);
+        }
+    }
+
+    // `*{...}` return: push one value per field (first field deepest), like the
+    // arguments. cstr fields become string-table indices.
+    if let Some(sv) = &script_result.return_struct {
+        for fi in 0..sv.field_count() {
+            let val = match sv.script_read(fi) {
+                Ok(ScriptVal::Integer(n)) => n as Int,
+                Ok(ScriptVal::Number(f)) => match sv.struct_type().field_type(fi) {
+                    Some(ArgType::F32) => (f as f32).to_bits() as Int,
+                    Some(ArgType::F64) => f64::to_bits(f) as Int,
+                    _ => f as Int,
+                },
+                Ok(ScriptVal::Pointer(p)) => p as usize as Int,
+                Ok(ScriptVal::Str(text)) => {
+                    let idx = forth.strings.len();
+                    forth.strings.push(CString::new(text).unwrap_or_default());
+                    idx as Int
+                }
+                _ => 0,
+            };
+            forth.stack_push(val);
+        }
+    }
+
     match script_result.return_val {
         ScriptVal::Nil => {}
         ScriptVal::Integer(n) => forth.stack_push(n as Int),
