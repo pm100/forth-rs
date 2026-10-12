@@ -68,12 +68,16 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
     // the data stack after the call.
     let mut writeback: Vec<bool> = (0..arg_count).map(|_| false).collect();
     let mut offset = 0usize;
+    // Hand out each struct slot exactly once so the borrows pushed into the
+    // invocation are provably disjoint.
+    let mut sv_iter = struct_values.iter_mut();
     for i in 0..arg_count {
         let n = slot_counts[i];
         let arg_type = func_def.get_arg_type(i);
+        let sv_slot = sv_iter.next().unwrap();
 
         if is_struct_arg(arg_type) {
-            let sv = struct_values[i].as_mut().unwrap();
+            let sv = sv_slot.as_mut().unwrap();
             let is_ptr = matches!(arg_type, ArgType::Pointer(_));
             writeback[i] = is_ptr;
             if is_ptr {
@@ -88,6 +92,7 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
         let val = raw[offset];
         match arg_type {
             ArgType::Char
+            | ArgType::I8
             | ArgType::I16
             | ArgType::U16
             | ArgType::I32
@@ -164,7 +169,15 @@ pub fn dispatch(func_def: &FuncDef, forth: &mut Forth) -> Result<(), Error> {
     }
 
     match script_result.return_val {
-        ScriptVal::Nil => {}
+        // A NULL pointer / NULL `cstr` return pushes 0; only `void` pushes
+        // nothing (and a `*{...}` return has already pushed its fields).
+        ScriptVal::Nil => {
+            if script_result.return_struct.is_none()
+                && !matches!(func_def.get_return_type(), ArgType::Void)
+            {
+                forth.stack_push(0);
+            }
+        }
         ScriptVal::Integer(n) => forth.stack_push(n as Int),
         ScriptVal::Number(f) => {
             // Forth stores floats as bit patterns on the stack.

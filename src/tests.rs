@@ -589,4 +589,64 @@ mod ffi_tests {
         forth.eval_string("fabs").unwrap();
         assert_eq!(f64::from_bits(forth.data_stack[0] as u64), 2.5);
     }
+
+    // ── fixes made to dyncall after the code review ───────────────────────
+
+    #[test]
+    fn test_ffi_null_cstr_return_pushes_zero() {
+        let mut forth = forth_with(&format!(r#"extern: getenv "{LIBC}|getenv|cstr|cstr|""#));
+        forth
+            .eval_string(r#"zstring" DYNCALL_SURELY_UNSET_VAR_12345" getenv"#)
+            .unwrap();
+        // NULL is a single 0, not an empty string and not "nothing"
+        assert_eq!(forth.data_stack, vec![0]);
+        forth.data_stack.clear();
+        forth.eval_string(r#"zstring" PATH" getenv"#).unwrap();
+        assert_eq!(forth.data_stack.len(), 1);
+        assert!(!forth.strings[forth.data_stack[0] as usize].to_bytes().is_empty());
+    }
+
+    #[test]
+    fn test_ffi_null_pointer_return_pushes_zero() {
+        let mut forth = forth_with(&format!(r#"extern: fopen "{LIBC}|fopen|cstr,cstr|ptr|""#));
+        forth
+            .eval_string(r#"zstring" /no/such/dir/dyncall_x" zstring" r" fopen"#)
+            .unwrap();
+        assert_eq!(forth.data_stack, vec![0]);
+    }
+
+    #[test]
+    fn test_ffi_i8_return_keeps_sign() {
+        let lib = struct_fixture();
+        let mut forth = forth_with(&format!(r#"extern: neg1 "{lib}|neg_one_i8||i8|""#));
+        forth.eval_string("neg1").unwrap();
+        assert_eq!(forth.data_stack, vec![-1]);
+    }
+
+    #[test]
+    fn test_ffi_usize_token_and_reuse() {
+        let mut forth = forth_with(&format!(r#"extern: slen "{LIBC}|strlen|cstr|usize|""#));
+        for _ in 0..200 {
+            forth.eval_string(r#"zstring" abc" slen"#).unwrap();
+        }
+        assert_eq!(forth.data_stack.len(), 200);
+        assert!(forth.data_stack.iter().all(|&n| n == 3));
+    }
+
+    #[test]
+    fn test_ffi_descriptor_errors_are_reported() {
+        let mut forth = Forth::new(64);
+        let err = forth
+            .eval_string(&format!(r#"extern: f "{LIBC}|strcpy|ocstr,cstr|ptr|""#))
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("ocstr needs a buffer length"), "{err:?}");
+        let err = forth
+            .eval_string(&format!(r#"extern: f "{LIBC}|printf|cstr,f32|i32|fixargs=1""#))
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("promotes"), "{err:?}");
+        let err = forth
+            .eval_string(r#"extern: f "dyncall_no_such_lib_xyz|f||void|""#)
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("dyncall_no_such_lib_xyz"), "{err:?}");
+    }
 }
